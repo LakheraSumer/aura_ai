@@ -1,0 +1,37 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: apna, POSTGRES_PASSWORD: apna_dev_only, POSTGRES_DB: apna }
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U apna" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install
+        working-directory: services/api
+        run: pip install -e ".[dev]" && python -m playwright install --with-deps chromium
+      - name: Lint
+        working-directory: services/api
+        run: ruff check src ../../tests
+      - name: Start Temporal dev server
+        run: |
+          docker run -d --name temporal -p 57233:7233 temporalio/temporal:1.5.1 server start-dev --ip=0.0.0.0
+          for i in $(seq 1 30); do nc -z 127.0.0.1 57233 && break; sleep 1; done
+      - name: Prepare test database
+        run: |
+          PGPASSWORD=apna_dev_only psql -h 127.0.0.1 -p 55432 -U apna -d apna -c "CREATE DATABASE apna_test"
+          PGPASSWORD=apna_dev_only psql -h 127.0.0.1 -p 55432 -U apna -d apna_test -c "CREATE EXTENSION vector"
+      - name: Unit tests
+        run: python -m pytest tests/unit -q
+      - name: Integration tests
+        run: python -m pytest tests/integration -q
+      - name: Docker build
+        run: docker build -f infrastructure/docker/backend.Dockerfile -t apna-backend .

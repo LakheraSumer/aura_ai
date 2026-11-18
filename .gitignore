@@ -1,0 +1,35 @@
+# Secrets: never commit. Copy .env.example and fill it locally (scripts/set_secret.ps1).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+infrastructure/server/.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Runtime data
+*.log
+*.sqlite3
+*.db
+artifacts/
+profiles/
+backup*.sql
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

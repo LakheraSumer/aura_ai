@@ -1,0 +1,54 @@
+# Apna AI local development infrastructure.
+# Ports are deliberately non-default (55432, 56379, 57233, 58233) so this stack
+# can run alongside other local projects that already use 5432/6379.
+name: apna-ai
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: apna
+      POSTGRES_PASSWORD: apna_dev_only
+      POSTGRES_DB: apna
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apna -d apna"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Temporal dev server (single binary, SQLite persistence on a volume so
+  # workflows survive container restarts). Production uses a managed/HA
+  # Temporal cluster - see docs/deployment/DEPLOYMENT.md.
+  temporal:
+    image: temporalio/temporal:1.5.1
+    command:
+      - server
+      - start-dev
+      - --ip=0.0.0.0
+      - --db-filename=/data/temporal.db
+      - --namespace=apna
+    ports:
+      - "127.0.0.1:57233:7233"
+      - "127.0.0.1:58233:8233"
+    volumes:
+      - temporaldata:/data
+    user: "0:0"
+
+volumes:
+  pgdata:
+  temporaldata:

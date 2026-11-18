@@ -1,0 +1,94 @@
+# Apna AI on one always-on server (e.g. Oracle Cloud Always Free, ARM or x86). No website, no public URL:
+# the telegram service polls Telegram for messages. Nothing listens on the internet.
+#
+#   cd infrastructure/server && docker compose up -d --build
+#
+# Needs: ../../services/api/.env (your keys) and ./.env with POSTGRES_PASSWORD (scripts/server_setup.sh makes it).
+name: apna-server
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: infrastructure/docker/backend.Dockerfile
+    target: base
+  image: apna-backend:server
+  env_file: ../../services/api/.env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://apna:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infrastructure/server/.env}@postgres:5432/apna
+    TEMPORAL_ADDRESS: temporal:7233
+    TEMPORAL_NAMESPACE: apna
+    REDIS_URL: redis://redis:6379/0
+    BROWSER_ENABLED: "false"
+  restart: unless-stopped
+  logging: &logs
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: apna
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: apna
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apna -d apna"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    logging: *logs
+
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    logging: *logs
+
+  temporal:
+    image: temporalio/temporal:1.5.1
+    command: [server, start-dev, --ip=0.0.0.0, --db-filename=/data/temporal.db, --namespace=apna]
+    volumes:
+      - temporaldata:/data
+    user: "0:0"
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "namespace", "describe", "--address", "127.0.0.1:7233", "-n", "apna"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    logging: *logs
+
+  migrate:
+    <<: *app
+    command: [alembic, upgrade, head]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  worker:
+    <<: *app
+    command: [python, -m, apna.workflows.worker]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      temporal: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  telegram:
+    <<: *app
+    command: [python, -m, apna.channels.telegram_poller]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      temporal: {condition: service_healthy}
+      worker: {condition: service_started}
+
+volumes:
+  pgdata:
+  temporaldata:
