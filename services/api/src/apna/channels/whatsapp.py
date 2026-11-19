@@ -74,7 +74,8 @@ class WhatsAppAdapter:
         self._transport = transport
 
     def _configured(self) -> bool:
-        return bool(self.s.whatsapp_enabled and self.s.whatsapp_phone_number_id and self.s.whatsapp_access_token)
+        return bool(self.s.whatsapp_enabled and self.s.whatsapp_phone_number_id
+                    and self.s.whatsapp_access_token and self.s.whatsapp_access_token.get_secret_value())
 
     def _policy_allows(self, external_id: str) -> bool:
         if self.s.whatsapp_production_enabled:

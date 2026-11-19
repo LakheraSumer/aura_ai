@@ -12,6 +12,7 @@ from apna.channels.base import ChannelAdapter
 from apna.channels.telegram import TelegramAdapter
 from apna.channels.whatsapp import WhatsAppAdapter
 from apna.core.config import get_settings
+from apna.core.logging import log
 from apna.db.models import LinkedChannel, Message, OutboundMessage
 
 # Overridable in tests to inject an httpx.MockTransport.
@@ -37,6 +38,8 @@ async def deliver_to_user(session: AsyncSession, user_id: uuid.UUID, msg: Messag
             continue
         outcome = await factory().send(link.external_id, msg.content, actions,
                                        last_inbound_at=link.last_inbound_at, proactive=proactive)
+        if outcome.status != "SENT":
+            log.warning("outbound_not_sent", channel=link.channel, status=outcome.status, error=outcome.error)
         row = OutboundMessage(user_id=user_id, channel=link.channel, external_id=link.external_id,
                               message_id=msg.id, kind=outcome.kind, text=msg.content, payload={"actions": actions},
                               status=outcome.status, provider_message_id=outcome.provider_message_id,

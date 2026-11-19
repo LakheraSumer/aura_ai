@@ -21,7 +21,7 @@ async def whatsapp_verify(mode: Annotated[str, Query(alias="hub.mode")],
                           token: Annotated[str, Query(alias="hub.verify_token")],
                           challenge: Annotated[str, Query(alias="hub.challenge")]) -> Response:
     s = get_settings()
-    if not (s.whatsapp_enabled and s.whatsapp_verify_token):
+    if not (s.whatsapp_enabled and s.whatsapp_verify_token and s.whatsapp_verify_token.get_secret_value()):
         raise NotFound("WhatsApp channel disabled")
     if mode == "subscribe" and token == s.whatsapp_verify_token.get_secret_value():
         return Response(challenge, media_type="text/plain")
@@ -32,7 +32,7 @@ async def whatsapp_verify(mode: Annotated[str, Query(alias="hub.mode")],
 async def whatsapp_inbound(request: Request, db: DB, conv: Conversations,
                            x_hub_signature_256: Annotated[str | None, Header()] = None) -> dict[str, int]:
     s = get_settings()
-    if not (s.whatsapp_enabled and s.whatsapp_app_secret):
+    if not (s.whatsapp_enabled and s.whatsapp_app_secret and s.whatsapp_app_secret.get_secret_value()):
         raise ProviderUnavailable("WhatsApp channel disabled")
     raw = await request.body()
     if not whatsapp.verify_signature(s.whatsapp_app_secret.get_secret_value(), raw, x_hub_signature_256):
@@ -45,7 +45,7 @@ async def whatsapp_inbound(request: Request, db: DB, conv: Conversations,
 async def telegram_inbound(request: Request, db: DB, conv: Conversations,
                            x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
     s = get_settings()
-    if not (s.telegram_enabled and s.telegram_webhook_secret):
+    if not (s.telegram_enabled and s.telegram_webhook_secret and s.telegram_webhook_secret.get_secret_value()):
         raise ProviderUnavailable("Telegram channel disabled")
     if not telegram.verify_secret(s.telegram_webhook_secret.get_secret_value(), x_telegram_bot_api_secret_token):
         raise Forbidden("Invalid secret token")
